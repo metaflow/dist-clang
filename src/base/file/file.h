@@ -7,7 +7,11 @@ namespace base {
 
 class File final : public Data {
  public:
-  explicit File(const String& path);  // Open read-only file
+  explicit File(const String& path);    // Open read-only file
+  File(const String& path, ui64 size);  // Open truncated write-only file
+
+  // TODO: add checks in methods on the file open-mode to prevent reading from a
+  //       write-only file, etc.
 
   using Handle::Close;
 
@@ -22,10 +26,11 @@ class File final : public Data {
   static bool Exists(const String& path, String* error = nullptr);
 
   ui64 Size(String* error = nullptr) const;
+
+  // Read-only file methods
   bool Read(Immutable* output, String* error = nullptr);
   bool Hash(Immutable* output, const List<Literal>& skip_list = List<Literal>(),
             String* error = nullptr);
-
   bool CopyInto(const String& dst_path, String* error = nullptr);
 
   static ui64 Size(const String& path, String* error = nullptr);
@@ -46,7 +51,6 @@ class File final : public Data {
   static bool Delete(const String& path, String* error = nullptr);
 
  private:
-  File(const String& path, ui64 size);  // Open truncated write-only file
   bool Close(String* error = nullptr);
 
   String error_;

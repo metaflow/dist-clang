@@ -13,7 +13,7 @@ namespace cache {
 using namespace string;
 
 TEST(FileCacheTest, HashCompliesWithRegex) {
-  std::regex hash_regex("[a-z0-9]{32}-[a-z0-9]{8}-[a-z0-9]{8}");
+  std::regex hash_regex("^[a-z0-9]{32}-[a-z0-9]{8}-[a-z0-9]{8}$");
   EXPECT_TRUE(
       std::regex_match(FileCache::Hash(HandledSource("1"_l), CommandLine("2"_l),
                                        Version("3"_l)).str.string_copy(),
@@ -25,6 +25,7 @@ TEST(FileCacheTest, LockNonExistentFile) {
   const String absent_path = String(tmp_dir) + "/absent_file";
   FileCache cache(tmp_dir);
 
+  ASSERT_TRUE(!base::File::Exists(absent_path));
   {
     FileCache::ReadLock lock(&cache, absent_path);
     EXPECT_FALSE(lock);
@@ -104,7 +105,7 @@ TEST(FileCacheTest, RemoveEntry) {
   //       removed.
 }
 
-TEST(FileCacheTest, RestoreSingleEntry) {
+TEST(FileCacheTest, RestoreSimpleEntry) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
@@ -428,8 +429,43 @@ TEST(FileCacheTest, DirectEntry_ChangedOriginalCode) {
   EXPECT_FALSE(cache.Find(bad_orig_code, cl, version, &entry));
 }
 
-TEST(FileCacheTest, DISABLED_RestoreSnappyEntry) {
+TEST(FileCacheTest, RestoreSnappyEntry) {
   // TODO: implement this test.
+  const base::TemporaryDir tmp_dir;
+  const String path = tmp_dir;
+  const String object_path = path + "/test.o";
+  const String deps_path = path + "/test.d";
+  const auto expected_stderr = "some warning"_l;
+  const auto expected_object_code = "some object code"_l;
+  const auto expected_deps = "some deps"_l;
+  FileCache cache(path, FileCache::UNLIMITED, true);
+  ASSERT_TRUE(cache.Run());
+  FileCache::Entry entry1, entry2;
+
+  const HandledSource code("int main() { return 0; }"_l);
+  const CommandLine cl("-c"_l);
+  const Version version("3.5 (revision 100000)"_l);
+
+  ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
+  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
+  EXPECT_FALSE(cache.Find(code, cl, version, &entry1));
+  EXPECT_TRUE(entry1.object.empty());
+  EXPECT_TRUE(entry1.deps.empty());
+  EXPECT_TRUE(entry1.stderr.empty());
+
+  entry1.object = expected_object_code;
+  entry1.deps = expected_deps;
+  entry1.stderr = expected_stderr;
+
+  auto future = cache.StoreNow(code, cl, version, entry1);
+  ASSERT_TRUE(!!future);
+  future->Wait();
+  ASSERT_TRUE(future->GetValue());
+
+  ASSERT_TRUE(cache.Find(code, cl, version, &entry2));
+  EXPECT_EQ(expected_object_code, entry2.object);
+  EXPECT_EQ(expected_deps, entry2.deps);
+  EXPECT_EQ(expected_stderr, entry2.stderr);
 }
 
 }  // namespace cache

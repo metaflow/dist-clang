@@ -141,6 +141,7 @@ class FileCache {
   void DoStore(cache::string::UnhandledHash orig_hash,
                const List<String>& headers,
                const cache::string::HandledHash& hash);
+  void DoCompress(const String& common_path);
   void Clean(ui32 period, const Atomic<bool>& is_shutting_down);
 
   inline bool RemoveEntry(const String& manifest_path) {

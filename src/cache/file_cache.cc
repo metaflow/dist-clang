@@ -10,7 +10,10 @@
 
 #include <clang/Basic/Version.h>
 
+#include <sys/mman.h>
+
 #include <sys/types.h>
+#include <unistd.h>
 #include <utime.h>
 
 #include <base/using_log.h>
@@ -280,29 +283,16 @@ void FileCache::DoStore(const HandledHash& hash, const Entry& entry) {
     const String object_path = CommonPath(hash) + ".o";
     String error;
 
-    if (!snappy_) {
-      if (!base::File::Write(object_path, entry.object)) {
-        RemoveEntry(manifest_path);
-        LOG(CACHE_ERROR) << "Failed to save object to " << object_path;
-        return;
-      }
-    } else {
-      String packed_content;
-      if (!snappy::Compress(entry.object.data(), entry.object.size(),
-                            &packed_content)) {
-        RemoveEntry(manifest_path);
-        LOG(CACHE_ERROR) << "Failed to pack contents for " << object_path;
-        return;
-      }
+    if (!base::File::Write(object_path, entry.object)) {
+      RemoveEntry(manifest_path);
+      LOG(CACHE_ERROR) << "Failed to save object to " << object_path;
+      return;
+    }
 
-      if (!base::File::Write(object_path, std::move(packed_content), &error)) {
-        RemoveEntry(manifest_path);
-        LOG(CACHE_ERROR) << "Failed to write to " << object_path << " : "
-                         << error;
-        return;
-      }
+    cached_size_ += base::File::Size(object_path);
 
-      manifest.set_snappy(true);
+    if (snappy_) {
+      pool_.Push([=] { DoCompress(CommonPath(hash)); });
     }
   } else {
     manifest.set_object(false);
@@ -341,7 +331,7 @@ void FileCache::DoStore(UnhandledHash orig_hash, const List<String>& headers,
   // source code. Otherwise, we won't be able to get list of the dependent
   // headers, while checking the direct cache. Such approach has a little
   // drawback, because the changes in the dependent headers will make a
-  // false-positive direct cache hit, followed by true cache miss.
+  // false-positive direct cache hit, followed by a true cache miss.
   const String manifest_path = CommonPath(orig_hash) + ".manifest";
   WriteLock lock(this, manifest_path);
 
@@ -388,6 +378,62 @@ void FileCache::DoStore(UnhandledHash orig_hash, const List<String>& headers,
   utime(FirstPath(hash).c_str(), nullptr);
 
   need_cleanup_ = true;
+}
+
+void FileCache::DoCompress(const String& common_path) {
+  const String manifest_path = common_path + ".manifest";
+  WriteLock lock(this, manifest_path);
+
+  if (!lock) {
+    // FIXME: actually try to wait until the lock is acquired.
+    LOG(CACHE_ERROR) << "Failed to lock " << manifest_path << " for writing";
+    return;
+  }
+
+  proto::Manifest manifest;
+  if (!LoadManifest(manifest_path, &manifest) || manifest.snappy() ||
+      !manifest.object()) {
+    return;
+  }
+  manifest.set_snappy(true);
+
+  const String object_path = common_path + ".o";
+
+  Immutable src_content;
+  if (!base::File::Read(object_path, &src_content)) {
+    return;
+  }
+
+  auto size = snappy::MaxCompressedLength(base::File::Size(object_path));
+  base::File dst(object_path, size);
+#if defined(OS_LINUX)
+  void* map = mmap64(nullptr, size, PROT_WRITE, MAP_PRIVATE, dst.native(), 0);
+#elif defined(OS_MACOSX)
+  void* map = mmap(nullptr, size, PROT_WRITE, MAP_PRIVATE, dst.native(), 0);
+#else
+#pragma message "This platform doesn't support mmap interface!"
+  // TODO: implement compression without using the memory mapping.
+  return;
+#endif
+
+  auto old_size = size;
+  snappy::RawCompress(src_content.data(), src_content.size(),
+                      reinterpret_cast<char*>(map), &size);
+  munmap(map, old_size);
+  if (ftruncate(dst.native(), size) == -1) {
+    String error;
+    base::GetLastError(&error);
+    LOG(CACHE_ERROR) << "Failed to truncate " << object_path << " : " << error;
+    // FIXME: do not replace object file, if a truncation has failed.
+    return;
+  }
+
+  if (!SaveManifest(manifest_path, manifest)) {
+    // FIXME: restore uncompressed object file.
+    return;
+  }
+
+  // TODO: update |cache_size_|.
 }
 
 void FileCache::Clean(ui32 period, const Atomic<bool>& is_shutting_down) {
