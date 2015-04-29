@@ -28,6 +28,10 @@ shared_library("net") {
     "network_service_mac.cc",
     "passive.cc",
     "passive.h",
+    "snappy_input_stream.cc",
+    "snappy_input_stream.h",
+    "snappy_output_stream.cc",
+    "snappy_output_stream.h",
     "socket.cc",
     "socket.h",
   ]
