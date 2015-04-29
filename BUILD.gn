@@ -2,6 +2,7 @@ group("All") {
   deps = [
     "//src/client:clang",
     "//src/daemon:clangd",
+    "//src/third_party/capnproto:capnp",
   ]
 }
 
