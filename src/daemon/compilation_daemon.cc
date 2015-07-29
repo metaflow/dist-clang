@@ -270,7 +270,7 @@ void CompilationDaemon::UpdateSimpleCache(
 
 void CompilationDaemon::UpdateDirectCache(
     const base::proto::Local* message, const HandledSource& source,
-    const cache::FileCache::Entry& entry) {
+    Immutable deps, const cache::FileCache::Entry& entry) {
   const auto& flags = message->flags();
 
   DCHECK(conf_.has_emitter() && !conf_.has_absorber());
@@ -280,7 +280,7 @@ void CompilationDaemon::UpdateDirectCache(
     return;
   }
 
-  if (entry.deps.empty()) {
+  if (deps.empty()) {
     LOG(CACHE_WARNING) << "Can't update direct cache without deps : "
                        << flags.input();
     return;
@@ -295,7 +295,7 @@ void CompilationDaemon::UpdateDirectCache(
   List<String> headers;
   UnhandledSource original_code;
 
-  if (ParseDeps(entry.deps, message->current_dir(), headers) &&
+  if (ParseDeps(deps, message->current_dir(), headers) &&
       base::File::Read(input_path, &original_code.str)) {
     cache_->Store(original_code, command_line, version, headers, hash);
   } else {
@@ -316,7 +316,7 @@ base::ProcessPtr CompilationDaemon::CreateProcess(
   process->AppendArg(flags.non_cached().begin(), flags.non_cached().end());
   process->AppendArg(flags.non_direct().begin(), flags.non_direct().end());
 
-  // TODO: render args using libclang
+  // TODO: render all the args below using libclang.
   for (const auto& plugin : flags.compiler().plugins()) {
     process->AppendArg("-load"_l).AppendArg(Immutable(plugin.path()));
   }

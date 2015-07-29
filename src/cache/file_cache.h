@@ -81,7 +81,6 @@ class FileCache {
 
   struct Entry {
     Immutable object;
-    Immutable deps;
     Immutable stderr;
   };
 

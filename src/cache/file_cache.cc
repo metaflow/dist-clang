@@ -232,13 +232,6 @@ bool FileCache::FindByHash(const HandledHash& hash, Entry* entry) const {
         }
       }
     }
-
-    if (manifest.deps()) {
-      const String deps_path = CommonPath(hash) + ".d";
-      if (!base::File::Read(deps_path, &entry->deps)) {
-        return false;
-      }
-    }
   }
 
   return true;
@@ -264,14 +257,6 @@ ui64 FileCache::GetEntrySize(string::Hash hash) const {
       return 0u;
     }
     result += base::File::Size(object_path);
-  }
-
-  if (manifest.deps()) {
-    if (!base::File::Exists(deps_path)) {
-      LOG(CACHE_WARNING) << deps_path << " should exist, but not found!";
-      return 0u;
-    }
-    result += base::File::Size(deps_path);
   }
 
   if (manifest.stderr()) {
@@ -323,16 +308,6 @@ bool FileCache::RemoveEntry(string::Hash hash, bool possibly_broken) {
     }
   } else {
     DCHECK(possibly_broken || !manifest.object());
-  }
-
-  if (base::File::Exists(deps_path)) {
-    if (!base::File::Delete(deps_path, &error)) {
-      entry_size -= base::File::Size(deps_path);
-      result = false;
-      LOG(CACHE_WARNING) << "Failed to delete " << deps_path << ": " << error;
-    }
-  } else {
-    DCHECK(possibly_broken || !manifest.deps());
   }
 
   if (base::File::Exists(stderr_path)) {
@@ -416,18 +391,6 @@ void FileCache::DoStore(const HandledHash& hash, Entry entry) {
     manifest.set_object(false);
   }
 
-  if (!entry.deps.empty()) {
-    const String deps_path = CommonPath(hash) + ".d";
-
-    if (!base::File::Write(deps_path, entry.deps)) {
-      RemoveEntry(hash);
-      LOG(CACHE_ERROR) << "Failed to save deps to " << deps_path;
-      return;
-    }
-  } else {
-    manifest.set_deps(false);
-  }
-
   if (!base::SaveToFile(manifest_path, manifest)) {
     RemoveEntry(hash);
     LOG(CACHE_ERROR) << "Failed to save manifest to " << manifest_path;
@@ -464,7 +427,6 @@ void FileCache::DoStore(UnhandledHash orig_hash, const List<String>& headers,
   proto::Manifest manifest;
   manifest.set_stderr(false);
   manifest.set_object(false);
-  manifest.set_deps(false);
   for (const auto& header : headers) {
     String error;
     Immutable header_hash;

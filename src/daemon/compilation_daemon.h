@@ -41,7 +41,7 @@ class CompilationDaemon : public BaseDaemon {
 
   void UpdateDirectCache(const base::proto::Local* message,
                          const cache::string::HandledSource& source,
-                         const cache::FileCache::Entry& entry);
+                         Immutable deps, const cache::FileCache::Entry& entry);
 
   const proto::Configuration conf_;
 

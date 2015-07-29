@@ -78,16 +78,13 @@ TEST(FileCacheTest, RemoveEntry) {
     const String common_path = cache.CommonPath(hash1);
     const String manifest_path = common_path + ".manifest";
     const String object_path = common_path + ".o";
-    const String deps_path = common_path + ".d";
     const String stderr_path = common_path + ".stderr";
 
     proto::Manifest manifest;
     manifest.set_object(true);
-    manifest.set_deps(true);
     manifest.set_stderr(true);
     ASSERT_TRUE(base::SaveToFile(manifest_path, manifest));
     ASSERT_TRUE(base::File::Write(object_path, "1"_l));
-    ASSERT_TRUE(base::File::Write(deps_path, "1"_l));
     ASSERT_TRUE(base::File::Write(stderr_path, "1"_l));
   }
 
@@ -97,15 +94,12 @@ TEST(FileCacheTest, RemoveEntry) {
     const String common_path = cache.CommonPath(hash2);
     const String manifest_path = common_path + ".manifest";
     const String object_path = common_path + ".o";
-    const String deps_path = common_path + ".d";
 
     proto::Manifest manifest;
     manifest.set_object(true);
-    manifest.set_deps(true);
     manifest.set_stderr(true);
     ASSERT_TRUE(base::SaveToFile(manifest_path, manifest));
     ASSERT_TRUE(base::File::Write(object_path, "1"_l));
-    ASSERT_TRUE(base::File::Write(deps_path, "1"_l));
   }
 
   string::Hash hash3{"12345678901234567890123456789012-12345678-00000003"_l};
@@ -114,11 +108,9 @@ TEST(FileCacheTest, RemoveEntry) {
     const String common_path = cache.CommonPath(hash3);
     const String manifest_path = common_path + ".manifest";
     const String object_path = common_path + ".o";
-    const String deps_path = common_path + ".d";
 
     ASSERT_TRUE(base::File::Write(manifest_path, "1"_l));
     ASSERT_TRUE(base::File::Write(object_path, "1"_l));
-    ASSERT_TRUE(base::File::Write(deps_path, "1"_l));
   }
 
   ASSERT_TRUE(cache.Run(1));
@@ -133,10 +125,8 @@ TEST(FileCacheTest, RestoreSingleEntry) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry1, entry2;
@@ -146,21 +136,17 @@ TEST(FileCacheTest, RestoreSingleEntry) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
   EXPECT_FALSE(cache.Find(code, cl, version, &entry1));
   EXPECT_TRUE(entry1.object.empty());
-  EXPECT_TRUE(entry1.deps.empty());
   EXPECT_TRUE(entry1.stderr.empty());
 
   entry1.object = expected_object_code;
-  entry1.deps = expected_deps;
   entry1.stderr = expected_stderr;
 
   cache.Store(code, cl, version, entry1);
 
   ASSERT_TRUE(cache.Find(code, cl, version, &entry2));
   EXPECT_EQ(expected_object_code, entry2.object);
-  EXPECT_EQ(expected_deps, entry2.deps);
   EXPECT_EQ(expected_stderr, entry2.stderr);
 }
 
@@ -168,10 +154,8 @@ TEST(FileCacheTest, RestoreEntryWithMissingFile) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry1, entry2;
@@ -181,17 +165,15 @@ TEST(FileCacheTest, RestoreEntryWithMissingFile) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
 
   entry1.object = expected_object_code;
-  entry1.deps = expected_deps;
   entry1.stderr = expected_stderr;
 
   // Store the entry.
   cache.Store(code, cl, version, entry1);
 
   base::File::Delete(cache.CommonPath(FileCache::Hash(code, cl, version)) +
-                     ".d");
+                     ".o");
 
   // Restore the entry.
   ASSERT_FALSE(cache.Find(code, cl, version, &entry2));
@@ -244,31 +226,31 @@ TEST(FileCacheTest, ExceedCacheSize) {
   const CommandLine cl("-c"_l);
   const Version version("3.5 (revision 100000)"_l);
 
-  FileCache cache(cache_path, 30, false);
+  FileCache cache(cache_path, 6, false);
   ASSERT_TRUE(cache.Run(1));
   auto db_size = cache.database_->SizeOnDisk();
 
   {
-    FileCache::Entry entry{obj_content[0], String(), String()};
+    FileCache::Entry entry{obj_content[0], String()};
     cache.Store(code[0], cl, version, entry);
-    EXPECT_EQ(14u, base::CalculateDirectorySize(cache_path) - db_size);
+    EXPECT_EQ(2u, base::CalculateDirectorySize(cache_path) - db_size);
   }
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 
   {
-    FileCache::Entry entry{obj_content[1], String(), String()};
+    FileCache::Entry entry{obj_content[1], String()};
     cache.Store(code[1], cl, version, entry);
-    EXPECT_EQ(29u, base::CalculateDirectorySize(cache_path) - db_size);
+    EXPECT_EQ(5u, base::CalculateDirectorySize(cache_path) - db_size);
   }
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
 
   {
-    FileCache::Entry entry{obj_content[2], String(), String()};
+    FileCache::Entry entry{obj_content[2], String()};
     cache.Store(code[2], cl, version, entry);
     std::this_thread::sleep_for(std::chrono::seconds(3));
-    EXPECT_EQ(16u, base::CalculateDirectorySize(cache_path) - db_size);
+    EXPECT_EQ(4u, base::CalculateDirectorySize(cache_path) - db_size);
   }
 
   FileCache::Entry entry;
@@ -281,12 +263,10 @@ TEST(FileCacheTest, RestoreDirectEntry) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const String header1_path = path + "/test1.h";
   const String header2_path = path + "/test2.h";
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry1, entry2;
@@ -296,12 +276,10 @@ TEST(FileCacheTest, RestoreDirectEntry) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
   ASSERT_TRUE(base::File::Write(header1_path, "#define A"_l));
   ASSERT_TRUE(base::File::Write(header2_path, "#define B"_l));
 
   entry1.object = expected_object_code;
-  entry1.deps = expected_deps;
   entry1.stderr = expected_stderr;
 
   // Store the entry.
@@ -316,7 +294,6 @@ TEST(FileCacheTest, RestoreDirectEntry) {
   // Restore the entry.
   ASSERT_TRUE(cache.Find(orig_code, cl, version, &entry2));
   EXPECT_EQ(expected_object_code, entry2.object);
-  EXPECT_EQ(expected_deps, entry2.deps);
   EXPECT_EQ(expected_stderr, entry2.stderr);
 }
 
@@ -324,12 +301,10 @@ TEST(FileCacheTest, DirectEntry_ChangedHeaderContents) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const String header1_path = path + "/test1.h";
   const String header2_path = path + "/test2.h";
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry;
@@ -339,12 +314,10 @@ TEST(FileCacheTest, DirectEntry_ChangedHeaderContents) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
   ASSERT_TRUE(base::File::Write(header1_path, "#define A"_l));
   ASSERT_TRUE(base::File::Write(header2_path, "#define B"_l));
 
   entry.object = expected_object_code;
-  entry.deps = expected_deps;
   entry.stderr = expected_stderr;
 
   // Store the entry.
@@ -367,13 +340,11 @@ TEST(FileCacheTest, DirectEntry_RewriteManifest) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const String header1_path = path + "/test1.h";
   const String header2_path = path + "/test2.h";
 
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry1, entry2;
@@ -383,12 +354,10 @@ TEST(FileCacheTest, DirectEntry_RewriteManifest) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
   ASSERT_TRUE(base::File::Write(header1_path, "#define A"_l));
   ASSERT_TRUE(base::File::Write(header2_path, "#define B"_l));
 
   entry1.object = expected_object_code;
-  entry1.deps = expected_deps;
   entry1.stderr = expected_stderr;
 
   // Store the entry.
@@ -414,12 +383,10 @@ TEST(FileCacheTest, DirectEntry_ChangedOriginalCode) {
   const base::TemporaryDir tmp_dir;
   const String path = tmp_dir;
   const String object_path = path + "/test.o";
-  const String deps_path = path + "/test.d";
   const String header1_path = path + "/test1.h";
   const String header2_path = path + "/test2.h";
   const auto expected_stderr = "some warning"_l;
   const auto expected_object_code = "some object code"_l;
-  const auto expected_deps = "some deps"_l;
   FileCache cache(path);
   ASSERT_TRUE(cache.Run(1));
   FileCache::Entry entry;
@@ -429,12 +396,10 @@ TEST(FileCacheTest, DirectEntry_ChangedOriginalCode) {
   const Version version("3.5 (revision 100000)"_l);
 
   ASSERT_TRUE(base::File::Write(object_path, expected_object_code));
-  ASSERT_TRUE(base::File::Write(deps_path, expected_deps));
   ASSERT_TRUE(base::File::Write(header1_path, "#define A"_l));
   ASSERT_TRUE(base::File::Write(header2_path, "#define B"_l));
 
   entry.object = expected_object_code;
-  entry.deps = expected_deps;
   entry.stderr = expected_stderr;
 
   // Store the entry.

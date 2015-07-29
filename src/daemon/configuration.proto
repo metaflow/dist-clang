@@ -45,6 +45,8 @@ message Configuration {
 
     optional uint32 clean_period = 9 [ default = 600 ];
     // in seconds.
+
+    optional bool permissive     = 10 [ default = false ];
   }
 
   message Emitter {
