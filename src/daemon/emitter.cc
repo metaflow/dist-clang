@@ -178,6 +178,7 @@ bool Emitter::HandleNewMessage(net::ConnectionPtr connection, Universal message,
   if (message->HasExtension(base::proto::Local::extension)) {
     Message execute(message->ReleaseExtension(base::proto::Local::extension));
     if (config->has_cache() && !config->cache().disabled()) {
+      LOG(INFO) << "+ cache " << cache_tasks_->Size();
       return cache_tasks_->Push(
           std::make_tuple(connection, std::move(execute), HandledSource()));
     } else {
@@ -274,19 +275,23 @@ void Emitter::DoCheckCache(const Atomic<bool>& is_shutting_down) {
     }
 
     STAT(SIMPLE_CACHE_MISS);
-
+    LOG(INFO) << "cache miss, add to all tasks";
     all_tasks_->Push(std::move(*task));
   }
 }
 
 void Emitter::DoLocalExecute(const Atomic<bool>& is_shutting_down) {
   while (!is_shutting_down) {
+    LOG(INFO) << "DoLocalExecute: cycle started";
     Optional&& task = local_tasks_->Pop();
+    LOG(INFO) << "DoLocalExecute got task";
     if (!task) {
+      LOG(INFO) << "DoLocalExecute: no more tasks. exit";
       break;
     }
 
     if (std::get<CONNECTION>(*task)->IsClosed()) {
+      LOG(INFO) << "DoLocalExecute: connection is closed -> continue"; 
       continue;
     }
 
@@ -296,6 +301,7 @@ void Emitter::DoLocalExecute(const Atomic<bool>& is_shutting_down) {
     net::proto::Status status;
     if (!SetupCompiler(incoming->mutable_flags(), &status)) {
       std::get<CONNECTION>(*task)->ReportStatus(status);
+      LOG(INFO) << "DoLocalExecute: bad compiler -> continue";
       continue;
     }
 
@@ -303,8 +309,10 @@ void Emitter::DoLocalExecute(const Atomic<bool>& is_shutting_down) {
 
     ui32 uid =
         incoming->has_user_id() ? incoming->user_id() : base::Process::SAME_UID;
+    LOG(INFO) << "DoLocalExecute: create process";
     base::ProcessPtr process = CreateProcess(
         incoming->flags(), uid, Immutable(incoming->current_dir()));
+    LOG(INFO) << "DoLocalExecute: process created";
     if (!process->Run(base::Process::UNLIMITED, &error)) {
       status.set_code(net::proto::Status::EXECUTION);
       if (!process->stderr().empty()) {
