@@ -14,7 +14,31 @@
 
 #include <base/using_log.h>
 
+
+
 namespace dist_clang {
+namespace {
+
+  void PrintDistClangStats() {
+    LOG(WARNING) << "PrintDistClangStats";
+  }
+
+  bool HandleDistClangSpecific(int argc, const char* const argv[]) {
+    // check if that is '--distclang-stats' then send and print stat message
+    LOG(WARNING) << argc << " arguments";
+    for (int i = 0; i < argc; i++) {
+      LOG(WARNING) << i << " " << argv[i];
+    }
+    if (argc == 2) {
+      if (strcmp(argv[1], "--distclang-stats") == 0) {
+          PrintDistClangStats();
+          return true;
+      }
+    }
+    return false;
+  }
+}
+
 namespace client {
 
 bool DoMain(int argc, const char* const argv[], Immutable socket_path,
@@ -37,6 +61,10 @@ bool DoMain(int argc, const char* const argv[], Immutable socket_path,
   }
 
   Command::List commands;
+
+  if (HandleDistClangSpecific(argc, argv)) {
+    return false;
+  }
 
   if (!DriverCommand::GenerateFromArgs(argc, argv, commands)) {
     LOG(WARNING) << "Failed to parse driver arguments - see errors above";

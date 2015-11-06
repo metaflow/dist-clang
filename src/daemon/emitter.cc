@@ -186,6 +186,8 @@ bool Emitter::HandleNewMessage(net::ConnectionPtr connection, Universal message,
     }
   }
 
+  LOG(INFO) << "not a Local message";
+
   NOTREACHED();
   return false;
 }
