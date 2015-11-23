@@ -129,7 +129,7 @@ bool DriverCommand::GenerateFromArgs(int argc, const char* const raw_argv[],
 
   DumpDiagnosticBuffer(diag_client);
   if (!result) {
-    LOG(WARNING) << "No Clang commands found";
+    // LOG(WARNING) << "No Clang commands found";
   }
   return result;
 }

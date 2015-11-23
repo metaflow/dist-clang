@@ -39,7 +39,7 @@ bool DoMain(int argc, const char* const argv[], Immutable socket_path,
   Command::List commands;
 
   if (!DriverCommand::GenerateFromArgs(argc, argv, commands)) {
-    LOG(WARNING) << "Failed to parse driver arguments - see errors above";
+    // LOG(WARNING) << "Failed to parse driver arguments - see errors above";
     return true;
   }
 
